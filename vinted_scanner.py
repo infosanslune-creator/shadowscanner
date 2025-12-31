@@ -122,10 +122,9 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
 
     try:
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token)
-chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
 
-url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
         params = {
             "chat_id": chat_id,
@@ -134,7 +133,13 @@ url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
             "link_preview_options": json.dumps({"is_disabled": True}),
         }
 
-        response = requests.post(url, params=params, headers=headers, timeout=timeoutconnection)
+        response = requests.post(
+            url,
+            params=params,
+            headers=headers,
+            timeout=timeoutconnection
+        )
+
         if response.status_code != 200:
             logging.error(
                 f"Telegram notification failed. Status code: {response.status_code}, Response: {response.text}"
@@ -144,6 +149,7 @@ url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
     except requests.exceptions.RequestException as e:
         logging.error(f"Error sending Telegram message: {e}")
+
 
 
 def main():
