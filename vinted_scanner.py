@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import json
+import os
 import Config
 import smtplib
 import logging
@@ -120,10 +121,14 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
     message = f"<b>{item_title}</b>\nPrijs: {item_price}\n{item_url}\n{item_image}"
 
     try:
-        url = f"https://api.telegram.org/bot{Config.telegram_bot_token}/sendMessage"
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token)
+chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
+
+url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
 
         params = {
-            "chat_id": Config.telegram_chat_id,
+            "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML",
             "link_preview_options": json.dumps({"is_disabled": True}),

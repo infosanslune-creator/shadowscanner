@@ -8,8 +8,8 @@ smtp_toaddrs = ["User <example@example.com>"]
 slack_webhook_url = ""
 
 # Telegram Token and ChatID for notification
-telegram_bot_token = "8589139226:AAH-QmIrlJOzc83Z7lcm_LFN6NFgWxcubjA"
-telegram_chat_id = "1354041534"
+telegram_bot_token = ""
+telegram_chat_id = ""
 
 # Vinted URL: use NL site for GPU search
 vinted_url = "https://www.vinted.nl"
