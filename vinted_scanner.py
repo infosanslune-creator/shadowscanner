@@ -159,13 +159,6 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
 def main():
     load_analyzed_item()
 
-    # 🔔 Force test message (tijdelijk)
-    send_telegram_message(
-        "✅ Vinted scanner is actief",
-        "TEST",
-        "https://shadowscanner.onrender.com/run",
-        "Render + cron-job.org OK"
-    )
 
     session = requests.Session()
 
