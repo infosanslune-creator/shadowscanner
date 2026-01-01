@@ -159,13 +159,13 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
 def main():
     load_analyzed_item()
 
-send_telegram_message(
-    "✅ Vinted scanner is actief",
-    "TEST",
-    "https://shadowscanner.onrender.com/run",
-    "Render + cron-job.org OK"
-)
-
+    # 🔔 Force test message (tijdelijk)
+    send_telegram_message(
+        "✅ Vinted scanner is actief",
+        "TEST",
+        "https://shadowscanner.onrender.com/run",
+        "Render + cron-job.org OK"
+    )
 
     session = requests.Session()
 
@@ -211,13 +211,11 @@ send_telegram_message(
             if Config.slack_webhook_url:
                 send_slack_message(item_title, item_price, item_url, item_image)
 
-            if bot := os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token):
-                if Config.telegram_chat_id:
-                    send_telegram_message(item_title, item_price, item_url, item_image)
+            send_telegram_message(item_title, item_price, item_url, item_image)
 
             list_analyzed_items.append(item_id)
             save_analyzed_item(item_id)
 
-
 if __name__ == "__main__":
     main()
+
