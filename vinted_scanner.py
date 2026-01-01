@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
+import os
 import sys
 import json
-import os
-import Config
-import smtplib
+import time
+import copy
 import logging
 import requests
+import smtplib
 import email.utils
 from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 
+import Config
+
 # =========================
 # Logging
 # =========================
-handler = RotatingFileHandler("vinted_scanner.log", maxBytes=5_000_000, backupCount=5)
+handler = RotatingFileHandler(
+    "vinted_scanner.log",
+    maxBytes=5_000_000,
+    backupCount=5
+)
 
 logging.basicConfig(
     handlers=[handler],
-    format="%(asctime)s - %(filename)s - %(funcName)10s():%(lineno)s - %(levelname)s - %(message)s",
     level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 # =========================
@@ -28,116 +35,66 @@ timeoutconnection = 30
 list_analyzed_items = []
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0",
-    "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
-    "Accept-Language": "nl-NL,nl;q=0.8,en-US;q=0.5,en;q=0.3",
-    "DNT": "1",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://www.vinted.nl/",
+    "Origin": "https://www.vinted.nl",
     "Connection": "keep-alive",
-    "Cache-Control": "no-cache",
 }
 
 # =========================
 # Helpers
 # =========================
 def safe_get_json(response):
-    """Safely parse JSON, return None on failure."""
     if response.status_code != 200:
-        logging.error(f"HTTP {response.status_code} from Vinted API")
-        logging.debug(response.text[:500])
+        logging.error(f"HTTP {response.status_code} from Vinted")
+        logging.debug(response.text[:300])
         return None
-
     try:
         return response.json()
     except ValueError:
-        logging.error("Invalid JSON returned by Vinted API")
-        logging.debug(response.text[:500])
+        logging.error("Invalid JSON from Vinted")
+        logging.debug(response.text[:300])
         return None
 
 
-def load_analyzed_item():
-    try:
-        with open("vinted_items.txt", "r", errors="ignore") as f:
-            for line in f:
-                if line.strip():
-                    list_analyzed_items.append(line.strip())
-    except FileNotFoundError:
-        logging.info("vinted_items.txt not found, starting fresh")
-    except Exception as e:
-        logging.error(e, exc_info=True)
-        sys.exit(1)
+def load_analyzed_items():
+    if not os.path.exists("vinted_items.txt"):
+        return
+    with open("vinted_items.txt", "r", errors="ignore") as f:
+        for line in f:
+            if line.strip():
+                list_analyzed_items.append(line.strip())
 
 
 def save_analyzed_item(item_id):
-    try:
-        with open("vinted_items.txt", "a") as f:
-            f.write(f"{item_id}\n")
-    except Exception as e:
-        logging.error(e, exc_info=True)
+    with open("vinted_items.txt", "a") as f:
+        f.write(f"{item_id}\n")
 
 
 # =========================
 # Notifications
 # =========================
-def send_email(item_title, item_price, item_url, item_image):
-    try:
-        msg = EmailMessage()
-        msg["To"] = Config.smtp_toaddrs
-        msg["From"] = email.utils.formataddr(("Vinted Scanner", Config.smtp_username))
-        msg["Subject"] = "Vinted Scanner - New Item"
-        msg["Date"] = email.utils.formatdate(localtime=True)
-
-        body = f"{item_title}\n{item_price}\n{item_url}\n{item_image}"
-        msg.set_content(body)
-
-        with smtplib.SMTP(Config.smtp_server, 587) as server:
-            server.starttls()
-            server.login(Config.smtp_username, Config.smtp_psw)
-            server.send_message(msg)
-
-        logging.info("E-mail sent")
-
-    except Exception as e:
-        logging.error(f"Email error: {e}", exc_info=True)
-
-
-def send_slack_message(item_title, item_price, item_url, item_image):
-    if not Config.slack_webhook_url:
-        return
-
-    payload = {
-        "text": f"*{item_title}*\nPrijs: {item_price}\n{item_url}\n{item_image}"
-    }
-
-    try:
-        r = requests.post(
-            Config.slack_webhook_url,
-            json=payload,
-            timeout=timeoutconnection,
-        )
-        if r.status_code != 200:
-            logging.error(f"Slack error {r.status_code}: {r.text}")
-        else:
-            logging.info("Slack notification sent")
-    except Exception as e:
-        logging.error(f"Slack error: {e}")
-
-
-def send_telegram_message(item_title, item_price, item_url, item_image):
+def send_telegram_message(title, price, url, image):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token)
     chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
 
-    logging.info(
-        f"Telegram check | bot_token={'OK' if bot_token else 'MISSING'} | "
-        f"chat_id={'OK' if chat_id else 'MISSING'}"
-    )
-
     if not bot_token or not chat_id:
-        logging.error("Telegram credentials missing — message NOT sent")
+        logging.error("Telegram credentials missing")
         return
 
-    message = f"<b>{item_title}</b>\nPrijs: {item_price}\n{item_url}\n{item_image}"
+    message = (
+        f"<b>{title}</b>\n"
+        f"Prijs: {price}\n"
+        f"{url}\n"
+        f"{image}"
+    )
 
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": message,
@@ -146,69 +103,88 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
     }
 
     try:
-        r = requests.post(url, json=payload, timeout=timeoutconnection)
-        logging.info(f"Telegram HTTP {r.status_code}: {r.text}")
+        r = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json=payload,
+            timeout=timeoutconnection
+        )
+        logging.info(f"Telegram HTTP {r.status_code}")
     except Exception as e:
-        logging.error(f"Telegram exception: {e}", exc_info=True)
-
+        logging.error(f"Telegram error: {e}", exc_info=True)
 
 
 # =========================
 # Main
 # =========================
 def main():
-    load_analyzed_item()
-
+    logging.info("Scanner run started")
+    load_analyzed_items()
 
     session = requests.Session()
 
     try:
         session.post(Config.vinted_url, headers=headers, timeout=timeoutconnection)
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         logging.error(f"Session init failed: {e}")
         return
 
     cookies = session.cookies.get_dict()
 
-    for params in Config.queries:
-        try:
-            response = requests.get(
-                f"{Config.vinted_url}/api/v2/catalog/items",
-                params=params,
-                cookies=cookies,
-                headers=headers,
-                timeout=timeoutconnection,
-            )
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Vinted request failed: {e}")
-            continue
+    for base_params in Config.queries:
+        max_pages = int(base_params.get("max_pages", 1))
 
-        data = safe_get_json(response)
-        if not data:
-            continue
+        params = copy.deepcopy(base_params)
+        params.pop("max_pages", None)
 
-        for item in data.get("items", []):
-            item_id = str(item.get("id"))
-            if not item_id or item_id in list_analyzed_items:
+        for page in range(1, max_pages + 1):
+            params["page"] = str(page)
+            params["_"] = int(time.time())  # cache-bypass
+
+            logging.info(f"Fetching page {page}")
+
+            try:
+                response = requests.get(
+                    f"{Config.vinted_url}/api/v2/catalog/items",
+                    params=params,
+                    cookies=cookies,
+                    headers=headers,
+                    timeout=timeoutconnection,
+                )
+            except Exception as e:
+                logging.error(f"Request failed: {e}")
                 continue
 
-            item_title = item.get("title", "Unknown")
-            item_url = item.get("url", "")
-            price = item.get("price", {})
-            item_price = f'{price.get("amount", "?")} {price.get("currency_code", "")}'
-            item_image = item.get("photo", {}).get("full_size_url", "")
+            data = safe_get_json(response)
+            if not data:
+                continue
 
-            if Config.smtp_username and Config.smtp_server:
-                send_email(item_title, item_price, item_url, item_image)
+            items = data.get("items", [])
+            logging.info(f"Vinted returned {len(items)} items on page {page}")
 
-            if Config.slack_webhook_url:
-                send_slack_message(item_title, item_price, item_url, item_image)
+            for item in items:
+                item_id = str(item.get("id"))
+                if not item_id:
+                    continue
 
-            send_telegram_message(item_title, item_price, item_url, item_image)
+                if item_id in list_analyzed_items:
+                    logging.info(f"Skipping known item {item_id}")
+                    continue
 
-            list_analyzed_items.append(item_id)
-            save_analyzed_item(item_id)
+                title = item.get("title", "Unknown")
+                url = item.get("url", "")
+                price_data = item.get("price", {})
+                price = f"{price_data.get('amount', '?')} {price_data.get('currency_code', '')}"
+                image = item.get("photo", {}).get("full_size_url", "")
+
+                logging.info(f"NEW ITEM: {title} | {price}")
+
+                send_telegram_message(title, price, url, image)
+
+                list_analyzed_items.append(item_id)
+                save_analyzed_item(item_id)
+
+    logging.info("Scanner run finished")
+
 
 if __name__ == "__main__":
     main()
-

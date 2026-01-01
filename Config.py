@@ -26,9 +26,8 @@ queries = [
     {
         "page": "1",
         "per_page": "96",
-        "search_text": "grafische kaarten",
+        "search_text": "",
         "catalog_ids": "",
-        # brand_ids[] matches multiple GPU brands from your NL search
         "brand_ids[]": [
             "844404",
             "205418",
@@ -45,11 +44,9 @@ queries = [
             "162458",
         ],
         "price_from": "200",
+        "price_to": "650",
         "currency": "EUR",
         "order": "newest_first",
-        # optional: set an upper bound to reduce noise
-        "price_to": "650",
-        # how many pages to scan (1 page = up to 96 items)
-        "max_pages": 1,
+        "max_pages": 3,
     },
 ]
