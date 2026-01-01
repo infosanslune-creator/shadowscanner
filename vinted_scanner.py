@@ -126,27 +126,31 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token)
     chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
 
+    logging.info(
+        f"Telegram check | bot_token={'OK' if bot_token else 'MISSING'} | "
+        f"chat_id={'OK' if chat_id else 'MISSING'}"
+    )
+
     if not bot_token or not chat_id:
+        logging.error("Telegram credentials missing — message NOT sent")
         return
 
     message = f"<b>{item_title}</b>\nPrijs: {item_price}\n{item_url}\n{item_image}"
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    params = {
+    payload = {
         "chat_id": chat_id,
         "text": message,
         "parse_mode": "HTML",
-        "link_preview_options": json.dumps({"is_disabled": True}),
+        "disable_web_page_preview": True,
     }
 
     try:
-        r = requests.post(url, params=params, timeout=timeoutconnection)
-        if r.status_code != 200:
-            logging.error(f"Telegram error {r.status_code}: {r.text}")
-        else:
-            logging.info("Telegram notification sent")
+        r = requests.post(url, json=payload, timeout=timeoutconnection)
+        logging.info(f"Telegram HTTP {r.status_code}: {r.text}")
     except Exception as e:
-        logging.error(f"Telegram error: {e}")
+        logging.error(f"Telegram exception: {e}", exc_info=True)
+
 
 
 # =========================
@@ -154,6 +158,14 @@ def send_telegram_message(item_title, item_price, item_url, item_image):
 # =========================
 def main():
     load_analyzed_item()
+
+send_telegram_message(
+    "✅ Vinted scanner is actief",
+    "TEST",
+    "https://shadowscanner.onrender.com/run",
+    "Render + cron-job.org OK"
+)
+
 
     session = requests.Session()
 
