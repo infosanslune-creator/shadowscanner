@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 import os
-import sys
 import json
 import time
 import copy
 import logging
 import requests
-import smtplib
-import email.utils
-from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 
 import Config
+import google.generativeai as genai
 
 # =========================
 # Logging
@@ -48,18 +45,22 @@ headers = {
 }
 
 # =========================
+# Gemini setup
+# =========================
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+
+# =========================
 # Helpers
 # =========================
 def safe_get_json(response):
     if response.status_code != 200:
         logging.error(f"HTTP {response.status_code} from Vinted")
-        logging.debug(response.text[:300])
         return None
     try:
         return response.json()
     except ValueError:
         logging.error("Invalid JSON from Vinted")
-        logging.debug(response.text[:300])
         return None
 
 
@@ -78,20 +79,51 @@ def save_analyzed_item(item_id):
 
 
 # =========================
-# Notifications
+# Gemini price evaluation
 # =========================
-def send_telegram_message(title, price, url, image):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", Config.telegram_bot_token)
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", Config.telegram_chat_id)
+def evaluate_gpu_price(title, price_eur):
+    prompt = f"""
+Je bent een expert in tweedehands GPU prijzen in Europa (2024–2026).
+
+Geef ALLEEN JSON:
+
+{{
+  "label": "No brainer | Goede prijs | Slechte prijs | Onzeker",
+  "market_value": "€X–€Y of onbekend"
+}}
+
+Titel: "{title}"
+Prijs: {price_eur} EUR
+"""
+
+    try:
+        response = gemini_model.generate_content(prompt)
+        text = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+    except Exception as e:
+        logging.error(f"Gemini error: {e}")
+        return {
+            "label": "Onzeker",
+            "market_value": "onbekend"
+        }
+
+
+# =========================
+# Telegram
+# =========================
+def send_telegram_message(title, price, analysis, url, image):
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not bot_token or not chat_id:
         logging.error("Telegram credentials missing")
         return
 
     message = (
-        f"<b>{title}</b>\n"
-        f"Prijs: {price}\n"
-        f"{url}\n"
+        f"<b>{title}</b>\n\n"
+        f"🧠 {analysis['label']} (marktwaarde {analysis['market_value']})\n"
+        f"💰 Prijs: {price}\n\n"
+        f"🔗 <a href=\"{url}\">Bekijk op Vinted</a>\n"
         f"{image}"
     )
 
@@ -99,16 +131,16 @@ def send_telegram_message(title, price, url, image):
         "chat_id": chat_id,
         "text": message,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": False,  # 👈 image preview AAN
     }
 
     try:
-        r = requests.post(
+        requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
             json=payload,
             timeout=timeoutconnection
         )
-        logging.info(f"Telegram HTTP {r.status_code}")
+        logging.info("Telegram message sent")
     except Exception as e:
         logging.error(f"Telegram error: {e}", exc_info=True)
 
@@ -121,26 +153,17 @@ def main():
     load_analyzed_items()
 
     session = requests.Session()
-
-    try:
-        session.post(Config.vinted_url, headers=headers, timeout=timeoutconnection)
-    except Exception as e:
-        logging.error(f"Session init failed: {e}")
-        return
-
+    session.post(Config.vinted_url, headers=headers, timeout=timeoutconnection)
     cookies = session.cookies.get_dict()
 
     for base_params in Config.queries:
         max_pages = int(base_params.get("max_pages", 1))
-
         params = copy.deepcopy(base_params)
         params.pop("max_pages", None)
 
         for page in range(1, max_pages + 1):
             params["page"] = str(page)
             params["_"] = int(time.time())  # cache-bypass
-
-            logging.info(f"Fetching page {page}")
 
             try:
                 response = requests.get(
@@ -158,27 +181,27 @@ def main():
             if not data:
                 continue
 
-            items = data.get("items", [])
-            logging.info(f"Vinted returned {len(items)} items on page {page}")
-
-            for item in items:
+            for item in data.get("items", []):
                 item_id = str(item.get("id"))
-                if not item_id:
-                    continue
-
-                if item_id in list_analyzed_items:
-                    logging.info(f"Skipping known item {item_id}")
+                if not item_id or item_id in list_analyzed_items:
                     continue
 
                 title = item.get("title", "Unknown")
                 url = item.get("url", "")
                 price_data = item.get("price", {})
-                price = f"{price_data.get('amount', '?')} {price_data.get('currency_code', '')}"
+                price_value = float(price_data.get("amount", 0))
+                price = f"{price_value} {price_data.get('currency_code', '')}"
                 image = item.get("photo", {}).get("full_size_url", "")
 
-                logging.info(f"NEW ITEM: {title} | {price}")
+                analysis = evaluate_gpu_price(title, price_value)
 
-                send_telegram_message(title, price, url, image)
+                send_telegram_message(
+                    title=title,
+                    price=price,
+                    analysis=analysis,
+                    url=url,
+                    image=image
+                )
 
                 list_analyzed_items.append(item_id)
                 save_analyzed_item(item_id)

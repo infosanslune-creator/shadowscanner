@@ -26,7 +26,7 @@ queries = [
     {
         "page": "1",
         "per_page": "96",
-        "search_text": "",
+        "search_text": "grafische kaarten",
         "catalog_ids": "",
         "brand_ids[]": [
             "844404",
@@ -47,6 +47,6 @@ queries = [
         "price_to": "650",
         "currency": "EUR",
         "order": "newest_first",
-        "max_pages": 3,
+        "max_pages": 1,
     },
 ]
