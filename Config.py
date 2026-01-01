@@ -1,3 +1,6 @@
+import os
+
+
 # SMTP Settings for e-mail notification
 smtp_username = ""
 smtp_psw = ""
@@ -8,8 +11,11 @@ smtp_toaddrs = ["User <example@example.com>"]
 slack_webhook_url = ""
 
 # Telegram Token and ChatID for notification
-telegram_bot_token = ""
-telegram_chat_id = ""
+telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+# Gemini model name; update if you want another (e.g. gemini-1.5-pro)
+gemini_model = "gemini-2.5-flash"
 
 # Vinted URL: use NL site for GPU search
 vinted_url = "https://www.vinted.nl"
@@ -41,5 +47,9 @@ queries = [
         "price_from": "200",
         "currency": "EUR",
         "order": "newest_first",
+        # optional: set an upper bound to reduce noise
+        "price_to": "650",
+        # how many pages to scan (1 page = up to 96 items)
+        "max_pages": 1,
     },
 ]
